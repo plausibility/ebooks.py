@@ -24,16 +24,30 @@ except ImportError:
 # change here, change in setup.py
 __version__ = "0.1.1"
 
+class Stop(object):
+    # Why did I do this? I just like using my terminal.
+    def __str__(self):
+        return "<stop>"
+    __repr__ = __str__
+
 class Ebooks(object):
     """ Turn your crummy Twitter feed into a top lel _ebooks bot.
+
         Note: the markov stuff is built into this class, ooh err.
+        It's available under _markov_*, but be warned - I might change
+        those whenever I get temperamental about my code.
 
         auth - a dict with tuple/list information from the Twitter dev site:
             {("origin_account", "ebooks_account"): (OAUTH_TOKEN,
                                                     OAUTH_SECRET,
                                                     CONSUMER_KEY,
                                                     CONSUMER_SECRET)}
-        dry - do everything, but don't actually *send* the tweets.
+        dry - do everything, but actually interacting with Twitter.
+        verbose - what it says on the tin, debug actually prints stuff.
+        chain_length - the quality of the markov output.
+            1 is complete gibberish
+            2 is reasonably adequate
+            3 is perfect (when it works at all)
     """
     auth = None
     dry = False
@@ -46,10 +60,13 @@ class Ebooks(object):
         if self.auth is None or len(self.auth) == 0:
             raise RuntimeError("No auth given.")
         # Markov junk
-        self.stop_word = "\n"
+        self.stop_word = Stop()
         self.markov = {}  # markov[ebook]
         # Ebooks junk
         self.length_cap = 140
+        self.horse()
+
+    def horse(self):
         self.names = {}
         self.t = {}
         self.seen = {}
@@ -59,81 +76,48 @@ class Ebooks(object):
             origin, ebooks = names
             self.add(origin, ebooks, auth)
 
-    # Markov junk
-    def mk_add(self, ebooks, msg, chain_length):
-        if len(msg) < 1:
+    def _markov_split(self, message, chain_length):
+        words = message.split()
+        if len(words) < chain_length:
             return
-        buf = [self.stop_word] * chain_length
-        self.debug(ebooks, "mk_add:", msg)
-        for word in msg.split():
-            self.markov[ebooks][tuple(buf)].append(word)
-            del buf[0]
-            buf.append(word)
-        self.debug(ebooks, repr(self.markov[ebooks][tuple(buf)]), repr(buf))
-        self.markov[ebooks][tuple(buf)].append(self.stop_word)
+        words.append(self.stop_word)
+        for i in xrange(len(words) - chain_length):
+            yield words[i:i + chain_length + 1]
 
-    def mk_gen(self, origin, msg=None, chain_length=None, max_words=None, recurse=0):
-        """ Give this bad boy the `origin` name and it'll spit you out some
-            random sentence. IDK man, markov chains are weird.
+    def _markov_add(self, ebooks, message, chain_length):
+        s = self.markov[ebooks]
+        for words in self._markov_split(message, chain_length):
+            key = tuple(words[:-1])
+            s.setdefault(key, [])
+            s[key].append(words[-1])
+        return s
 
-            Optionally, seed it with a `msg`.
-
-            If `recurse` is a positive number, it will try up to n times to
-            recurse again until it gets a different message.
-        """
-        #if ebooks in self.names.values():
-        #    ebooks = [k for k, v in self.names.items() if v == ebooks][0]
-        ebooks = [k for k, v in self.names.items() if v == origin][0]
-        if msg is None:
-            # This just does... anything, really.
-            msg = random.choice(self.tweets[ebooks])["text"]
-            self.debug(ebooks, "msg~:", msg)
+    def _markov_gen(self, ebooks, seed=None, chain_length=None):
+        if seed is None:
+            seed = random.choice(self.tweets[ebooks])["text"]
         if chain_length is None:
             chain_length = self.chain_length
-        if max_words is None:
-            max_words = self.max_words
-        buf = msg.split()[:chain_length]
-        if len(msg.split()) > chain_length:
-            message = buf[:]
-        else:
-            message = []
-            for i in xrange(chain_length):
-                try:
-                    message.append(
-                        random.choice(
-                            self.markov[ebooks][
-                                random.choice(self.markov[ebooks].keys())
-                            ]
-                        )
-                    )
-                except IndexError:
-                    self.debug(ebooks, "Got an index error, chump.")
-                    #self.debug(ebooks, self.markov[ebooks].keys())
-                    continue
-            self.debug(ebooks, "mk_gen seeder:", message)
-        for i in xrange(max_words):
+        key = seed.split()[:chain_length]
+        gen_words = []
+        for i in xrange(self.max_words):
+            gen_words.append(key[0])
+            if len(" ".join(gen_words)) > self.length_cap:
+                # TODO: this makes the chain crap. What can we do?
+                gen_words.pop(-1)
+                break
             try:
-                next_word = random.choice(self.markov[ebooks][tuple(buf)])
-            except IndexError:
-                self.debug(ebooks, "Another index error:", repr(tuple(buf)), self.markov[ebooks][tuple(buf)])
-                continue
-            self.debug(ebooks, "broke through")
-            if next_word == self.stop_word:
-                self.debug(ebooks, "breakin'", i)
+                next_word = self.markov[ebooks][tuple(key)]
+            except KeyError:
+                # bail bail bail bail!
                 break
-            message.append(next_word)
-            if len(" ".join(message + [next_word])) > self.length_cap:
+            if not next_word:
                 break
-            del buf[0]
-            buf.append(next_word)
-            self.debug(ebooks, "buf[-1]", repr(buf[-1]), "message[-1]", repr(message[-1]))
-        if msg == " ".join(message):
-            if recurse > 0:
-                return self.mk_gen(origin, msg=msg, chain_length=chain_length, max_words=max_words, recurse=recurse-1)
-            self.debug(ebooks, "MSG IS THE SAME, OH DARN")
-            return True
-        message = filter(lambda s: s != "\n", message)  # Remove newlines
-        message = " ".join(message)  # Join the list
+            next = random.choice(next_word)
+            key = key[1:] + [next]
+            if next is self.stop_word:
+                gen_words.append(key[0])
+                break
+        message = " ".join(gen_words)  # Join the list
         message = re.sub(r"(?:\.)?@([^\s]+)", r"#\1", message)  # Butcher mentions
         message = unescape_html(message)  # Escape HTML codes
         return message.strip()
@@ -141,16 +125,16 @@ class Ebooks(object):
     # Ebooks junk
     def add(self, origin, ebooks, auth):
         self.names[ebooks] = origin
-        self.t[ebooks] = twitter.Twitter(auth=twitter.OAuth(*auth))
+        self.t[ebooks] = None if self.dry else twitter.Twitter(auth=twitter.OAuth(*auth))
         self.seen[ebooks] = 0
         self.tweets[ebooks] = self.load(ebooks)
-        #if len(self.tweets[ebooks]) > 0:
-        #    self.seen[ebooks] = self.tweets[ebooks][-1]["id"]
-        self.settings[ebooks] = self.t[ebooks].account.settings()
+        if len(self.tweets[ebooks]) > 0:
+            self.seen[ebooks] = self.tweets[ebooks][-1]["id"]
+        self.settings[ebooks] = None if self.dry else self.t[ebooks].account.settings()
         # Markov junk
-        self.markov[ebooks] = defaultdict(list)
+        self.markov[ebooks] = {}
         for tweet in self.tweets[ebooks]:
-            self.mk_add(ebooks, tweet["text"], self.chain_length)
+            self._markov_add(ebooks, tweet["text"], self.chain_length)
 
     def load(self, ebooks):
         origin = self.names[ebooks]
