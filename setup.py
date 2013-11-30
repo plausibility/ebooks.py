@@ -17,9 +17,6 @@ kw = {
     "packages": [
         "ebooks"
     ],
-    "package_dir": {
-        "ebooks": "ebooks"
-    },
     "install_requires": [
         "gevent",
         "twitter"
@@ -30,7 +27,7 @@ kw = {
         "Development Status :: 3 - Alpha",
         #"Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 2"
+        "Programming Language :: Python"
     ]
 }
 
