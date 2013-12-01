@@ -26,6 +26,10 @@ __version__ = "0.1.1"
 
 class Stop(object):
     # Why did I do this? I just like using my terminal.
+    def __new__(cls, *args, **kwargs):
+        if not hasattr(cls, "_stop_word"):
+            cls._stop_word = super(Stop, cls).__new__(cls, *args, **kwargs)
+        return cls._stop_word
     def __str__(self):
         return "<stop>"
     __repr__ = __str__
@@ -99,6 +103,7 @@ class Ebooks(object):
             chain_length = self.chain_length
         key = seed.split()[:chain_length]
         gen_words = []
+        self.debug(ebooks, seed, key, chain_length)
         for i in xrange(self.max_words):
             gen_words.append(key[0])
             if len(" ".join(gen_words)) > self.length_cap:
@@ -175,7 +180,7 @@ class Ebooks(object):
     def debug(self, ebooks, *msg):
         if not self.verbose:
             return
-        print(u"[{0}] {1}".format(ebooks, u" ".join(map(unicode, msg))))
+        print(u"[@{0}] {1}".format(ebooks, u" ".join(map(unicode, msg))))
 
     """
     def _fetch_tweets(self):
