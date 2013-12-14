@@ -10,3 +10,4 @@ Todo
 + Get gevent-based tweeting actually going.
 + Move configuration into some sneaky attributes on the subclass (then use `inspect.getmembers()` to find them)
 + Tidy shit up.
++ Add example use file.

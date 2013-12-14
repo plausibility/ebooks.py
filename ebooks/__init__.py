@@ -6,7 +6,7 @@ gevent.monkey.patch_all()
 import gevent
 import twitter
 
-from collections import defaultdict
+import inspect
 import random
 import time
 import json
@@ -22,7 +22,7 @@ except ImportError:
     unescape_html = html.parser.HTMLParser().unescape
 
 # change here, change in setup.py
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 class Stop(object):
     # Why did I do this? I just like using my terminal.
@@ -33,6 +33,9 @@ class Stop(object):
     def __str__(self):
         return "<stop>"
     __repr__ = __str__
+
+def noop(f):
+    return lambda *a, **kw: print(f.__name__, "is noop'd, sorry")
 
 class Ebooks(object):
     """ Turn your crummy Twitter feed into a top lel _ebooks bot.
@@ -60,25 +63,49 @@ class Ebooks(object):
     chain_length = 2
     max_words = 30
 
+    timer_fetch = 60 * 5
+    timer_tweet = 60 * 10
+
     def __init__(self):
-        if self.auth is None or len(self.auth) == 0:
-            raise RuntimeError("No auth given.")
-        # Markov junk
+        # if self.auth is None or len(self.auth) == 0:
+        #     raise RuntimeError("No auth given.")
         self.stop_word = Stop()
-        self.markov = {}  # markov[ebook]
-        # Ebooks junk
+        self.markov = {}
         self.length_cap = 140
         self.horse()
 
     def horse(self):
-        self.names = {}
+        # source info dictionaries
+        self.sources = {}
+        # twitter.Twitter instances
         self.t = {}
+        # last seen tweet id
         self.seen = {}
+        # list of tweets
         self.tweets = {}
-        self.settings = {}
-        for names, auth in self.auth.items():
-            origin, ebooks = names
-            self.add(origin, ebooks, auth)
+
+        for name, info in inspect.getmembers(self):
+            if not name.startswith("t_") or not name[2:].strip():
+                continue
+            source = name[2:].strip()
+            if not "auth" in info or len(info["auth"]) != 4:
+                self.debug(source, "no/invalid auth, not interested")
+                continue
+            self.debug(source, "interested!")
+            info.setdefault("ebooks", None)
+            info.setdefault("chain_length", self.chain_length)
+            self.sources[source] = info
+            self.add(source, info["auth"], info["chain_length"], ebooks=info["ebooks"])
+
+    def add(self, source, auth, chain_length, ebooks=None):
+        self.t[source] = None if self.dry else twitter.Twitter(auth=twitter.OAuth(*auth))
+        self.seen[source] = 0
+        self.tweets[source] = self.load(source)
+        # if len(self.tweets[source]) > 0:
+        #     self.seen[source] = self.tweets[source][-1]["id"]
+        self.markov[source] = {}
+        for tweet in self.tweets[source]:
+            self._markov_add(source, tweet["text"], chain_length)
 
     def _markov_split(self, message, chain_length):
         words = message.split()
@@ -88,30 +115,31 @@ class Ebooks(object):
         for i in xrange(len(words) - chain_length):
             yield words[i:i + chain_length + 1]
 
-    def _markov_add(self, ebooks, message, chain_length):
-        s = self.markov[ebooks]
+    def _markov_add(self, source, message, chain_length):
+        s = self.markov[source]
         for words in self._markov_split(message, chain_length):
             key = tuple(words[:-1])
             s.setdefault(key, [])
             s[key].append(words[-1])
         return s
 
-    def _markov_gen(self, ebooks, seed=None, chain_length=None):
+    def _markov_gen(self, source, seed=None, chain_length=None):
         if seed is None:
-            seed = random.choice(self.tweets[ebooks])["text"]
+            seed = random.choice(self.tweets[source])["text"]
         if chain_length is None:
-            chain_length = self.chain_length
+            chain_length = self.sources[source]["chain_length"]
         key = seed.split()[:chain_length]
         gen_words = []
-        self.debug(ebooks, seed, key, chain_length)
+        self.debug(source, seed, key, chain_length)
         # max_words - 1 makes the chain nicer and not 2long2tweet.
         for i in xrange(self.max_words -1):
             gen_words.append(key[0])
             if len(" ".join(gen_words)) > self.length_cap:
+                self.debug(source, "adding", gen_words[-1], "is 2long2tweet")
                 gen_words.pop(-1)
                 break
             try:
-                next_word = self.markov[ebooks][tuple(key)]
+                next_word = self.markov[source][tuple(key)]
             except KeyError:
                 # bail bail bail bail!
                 break
@@ -123,65 +151,51 @@ class Ebooks(object):
                 gen_words.append(key[0])
                 break
         message = " ".join(gen_words)
+        if message == seed:
+            self.debug(source, "aw flip, it's the same.")
         # This will butcher mentions
         message = re.sub(r"(?:\.)?@([^\s]+)", r"#\1", message)
         message = unescape_html(message)
         return message.strip()
 
-    # Ebooks junk
-    def add(self, origin, ebooks, auth):
-        self.names[ebooks] = origin
-        self.t[ebooks] = None if self.dry else twitter.Twitter(auth=twitter.OAuth(*auth))
-        self.seen[ebooks] = 0
-        self.tweets[ebooks] = self.load(ebooks)
-        if len(self.tweets[ebooks]) > 0:
-            self.seen[ebooks] = self.tweets[ebooks][-1]["id"]
-        self.settings[ebooks] = None if self.dry else self.t[ebooks].account.settings()
-        # Markov junk
-        self.markov[ebooks] = {}
-        for tweet in self.tweets[ebooks]:
-            self._markov_add(ebooks, tweet["text"], self.chain_length)
-
-    def load(self, ebooks):
-        origin = self.names[ebooks]
+    def load(self, source):
         try:
-            with open("{0}.json".format(origin), "rb") as f:
+            with open("{0}.json".format(source), "rb") as f:
                 loaded = json.loads(f.read())
-                self.seen[ebooks] = loaded["seen"]
+                self.seen[source] = loaded["seen"]
                 return loaded["tweets"]
         except IOError:
             # We can't find the brain!
             return []
 
-    def save(self, ebooks, tweets=None):
+    def save(self, source, tweets=None):
         if tweets is None:
-            tweets = self.tweets[ebooks]
-        origin = self.names[ebooks]
-        self.debug(ebooks, "Saving brain of:", origin)
-        with open("{0}.json".format(origin), "wb") as f:
-            json.dump({"tweets": tweets, "seen": self.seen[ebooks]}, f, indent=4)
+            tweets = self.tweets[source]
+        self.debug(source, "saving brain")
+        with open("{0}.json".format(source), "wb") as f:
+            json.dump({"source": source, "tweets": tweets, "seen": self.seen[source]}, f, indent=4)
 
-    def fetch(self, ebooks=None):
-        if ebooks is None:
-            ebooks = self.names.keys()
-        for ebook in ebooks:
-            origin = self.names[ebook]
-            bits = {"screen_name": origin, "include_rts": "false", "count": 200}
-            if self.seen[ebook]:
-                bits["since_id"] = self.seen[ebook]
-            self.debug(ebook, "**bits:?", bits)
-            tweets = self.t[ebook].statuses.user_timeline(**bits)
-            self.debug(ebook, "Found", len(tweets), "new tweets")
+    def fetch(self, sources=None):
+        if sources is None:
+            sources = self.sources.keys()
+        for source in sources:
+            bits = {"screen_name": source, "include_rts": "false", "count": 200}
+            if self.seen[source]:
+                bits["since_id"] = self.seen[source]
+            self.debug(source, "**bits:?", bits)
+            tweets = self.t[source].statuses.user_timeline(**bits)
+            self.debug(source, "found", len(tweets), "new tweets")
             if len(tweets) > 0:
-                self.seen[ebook] = tweets[0]["id"]
-            self.debug(ebook, "Last tweet:", self.seen[ebook])
-            self.tweets[ebook].extend([{"id":tweet["id"], "text":tweet["text"]} for tweet in tweets])
-            self.save(ebook)
+                self.seen[source] = tweets[0]["id"]
+            self.debug(source, "last tweet:", self.seen[source])
+            self.tweets[source].extend([{"id":tweet["id"], "text":tweet["text"]} for tweet in tweets])
+            self.save(source)
 
-    def debug(self, ebooks, *msg):
+    def debug(self, source, *msg):
         if not self.verbose:
             return
-        print(u"[@{0}] {1}".format(ebooks, u" ".join(map(unicode, msg))))
+        # TODO: Py3k cross compatibility.
+        print(u"[@{0}] {1}".format(source, u" ".join(map(unicode, msg))))
 
     """
     def _fetch_tweets(self):
