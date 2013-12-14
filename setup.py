@@ -1,15 +1,10 @@
 from setuptools import setup
 
-
-def long_desc():
-    with open('README.rst', 'rb') as f:
-        return f.read()
-
 kw = {
     "name": "ebooks",
-    "version": "0.2.0",
-    "description": '',
-    "long_description": long_desc(),
+    "version": "0.2.1",
+    "description": 'Markov Twitter bot',
+    "long_description": "Python based multiple-account-using, markov-tweeting, hamburger-eating CHAMPION OF THE WORLDDDD!",
     "url": "https://github.com/plausibility/ebooks.py",
     "author": "plausibility",
     "author_email": "chris@gibsonsec.org",
@@ -18,7 +13,6 @@ kw = {
         "ebooks"
     ],
     "install_requires": [
-        "gevent",
         "twitter"
     ],
     "zip_safe": False,

@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
-import gevent.monkey
-gevent.monkey.patch_all()
 
-import gevent
 import twitter
 
 from datetime import datetime
@@ -23,7 +20,7 @@ except ImportError:
     unescape_html = html.parser.HTMLParser().unescape
 
 # change here, change in setup.py
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 class Stop(object):
@@ -77,6 +74,8 @@ class Ebooks(object):
         self.markov = {}
         self._next_tweet = 0
         self._next_fetch = 0
+        if self.dry:
+            self.debug("@", "we're dry")
         self.horse()
 
     def horse(self):
@@ -228,13 +227,11 @@ class Ebooks(object):
                 self.debug("@", "fetch time!")
                 self.fetch()
                 self._next_fetch = time.time() + self.timer_fetch
-                gevent.sleep(0)
             if time.time() > self._next_tweet:
                 self.debug("@", "tweet time!")
                 self.tweet()
                 self._next_tweet = time.time() + self.timer_tweet
-                gevent.sleep(0)
-            gevent.sleep(0)
+            time.sleep(1)
 
     def debug(self, source, *msg):
         if not self.verbose:
