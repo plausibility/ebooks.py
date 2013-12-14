@@ -22,7 +22,7 @@ except ImportError:
     unescape_html = html.parser.HTMLParser().unescape
 
 # change here, change in setup.py
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 class Stop(object):
     # Why did I do this? I just like using my terminal.
@@ -104,10 +104,10 @@ class Ebooks(object):
         key = seed.split()[:chain_length]
         gen_words = []
         self.debug(ebooks, seed, key, chain_length)
-        for i in xrange(self.max_words):
+        # max_words - 1 makes the chain nicer and not 2long2tweet.
+        for i in xrange(self.max_words -1):
             gen_words.append(key[0])
             if len(" ".join(gen_words)) > self.length_cap:
-                # TODO: this makes the chain crap. What can we do?
                 gen_words.pop(-1)
                 break
             try:
@@ -122,9 +122,10 @@ class Ebooks(object):
             if next is self.stop_word:
                 gen_words.append(key[0])
                 break
-        message = " ".join(gen_words)  # Join the list
-        message = re.sub(r"(?:\.)?@([^\s]+)", r"#\1", message)  # Butcher mentions
-        message = unescape_html(message)  # Escape HTML codes
+        message = " ".join(gen_words)
+        # This will butcher mentions
+        message = re.sub(r"(?:\.)?@([^\s]+)", r"#\1", message)
+        message = unescape_html(message)
         return message.strip()
 
     # Ebooks junk

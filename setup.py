@@ -7,7 +7,7 @@ def long_desc():
 
 kw = {
     "name": "ebooks",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "description": '',
     "long_description": long_desc(),
     "url": "https://github.com/plausibility/ebooks.py",
