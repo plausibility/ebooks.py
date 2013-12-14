@@ -1,7 +1,7 @@
 ebooks.py
 =========
 
-Gevent based multiple-account-using, markov-tweeting, hamburger-eating CHAMPION OF THE WORLDDDD!
+Gevent based multiple-account-using, markov-tweeting, python-using, hamburger-eating CHAMPION OF THE WORLDDDD!
 
 Todo
 ----
