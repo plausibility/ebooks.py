@@ -6,7 +6,7 @@ Python based multiple-account-using, markov-tweeting, hamburger-eating CHAMPION 
 Todo
 ----
 
-+ [ ] Add Py3k compatibility with Flask's `_compat.py` cheatorama.
++ [x] Add Py3k compatibility with Flask's `_compat.py` cheatorama.
 + [x] ~~Get gevent-based tweeting actually going.~~ (we're no longer using gevent)
 + [x] Move configuration into some sneaky attributes on the subclass (then use `inspect.getmembers()` to find them)
 + [x] Tidy shit up.
