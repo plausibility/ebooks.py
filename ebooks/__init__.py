@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
+from ._compat import (PY2, unicode_type, iterrange)
+
 import twitter
 
 from datetime import datetime
@@ -10,17 +12,15 @@ import time
 import json
 import re
 
-try:
-    # Python2
+if PY2:
     import HTMLParser
     unescape_html = HTMLParser.HTMLParser().unescape
-except ImportError:
-    # Python3
+else:
     import html.parser
     unescape_html = html.parser.HTMLParser().unescape
 
 # change here, change in setup.py
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 
 class Stop(object):
@@ -48,7 +48,7 @@ class Ebooks(object):
                          CONSUMER_KEY,
                          CONSUMER_SECRET),
             }
-        dry - do everything, except for actually interacting with Twitter.
+        dry* - do everything, except for actually interacting with Twitter.
         verbose - what it says on the tin, debug actually prints stuff.
         chain_length* - the quality of the markov output.
             1 is complete gibberish
@@ -96,13 +96,14 @@ class Ebooks(object):
                 self.debug(source, "no/invalid auth, not interested")
                 continue
             self.debug(source, "interested!")
+            info.setdefault("dry", self.dry)
             info.setdefault("ebooks", None)
             info.setdefault("chain_length", self.chain_length)
             self.sources[source] = info
-            self.add(source, info["auth"], info["chain_length"], ebooks=info["ebooks"])
+            self.add(source, info["auth"], info["chain_length"], info=info)
 
-    def add(self, source, auth, chain_length, ebooks=None):
-        self.t[source] = None if self.dry else twitter.Twitter(auth=twitter.OAuth(*auth))
+    def add(self, source, auth, chain_length, info=None):
+        self.t[source] = None if info["dry"] else twitter.Twitter(auth=twitter.OAuth(*auth))
         self.seen[source] = 0
         self.tweets[source] = self.load(source)
         self.markov[source] = {}
@@ -121,7 +122,7 @@ class Ebooks(object):
         if len(words) < chain_length:
             return
         words.append(self.stop_word)
-        for i in xrange(len(words) - chain_length):
+        for i in iterrange(len(words) - chain_length):
             yield words[i:i + chain_length + 1]
 
     def _markov_add(self, source, message, chain_length):
@@ -141,7 +142,7 @@ class Ebooks(object):
         gen_words = []
         self.debug(source, seed, key, chain_length)
         # max_words - 1 makes the chain nicer and not 2long2tweet.
-        for i in xrange(self.max_words -1):
+        for i in iterrange(self.max_words -1):
             gen_words.append(key[0])
             if len(" ".join(gen_words)) > self.length_cap:
                 self.debug(source, "adding", gen_words[-1], "is 2long2tweet")
@@ -170,19 +171,24 @@ class Ebooks(object):
     def load(self, source):
         try:
             with open("{0}.json".format(source), "rb") as f:
-                loaded = json.loads(f.read())
+                # Py3k compat.
+                loaded = json.loads(f.read().decode("utf-8"))
                 self.seen[source] = loaded["seen"]
                 return loaded["tweets"]
         except IOError:
             # We can't find the brain!
             return []
 
-    def save(self, source, tweets=None):
+    def save(self, source, tweets=None, indent=None):
         if tweets is None:
             tweets = self.tweets[source]
         self.debug(source, "saving brain")
         with open("{0}.json".format(source), "wb") as f:
-            json.dump({"source": source, "tweets": tweets, "seen": self.seen[source]}, f, indent=4)
+            data = {"source": source, "tweets": tweets, "seen": self.seen[source]}
+            if PY2:
+                json.dump(data, f, indent=indent)
+            else:
+                f.write(bytes(json.dumps(data, indent=indent), "UTF-8"))
 
     def fetch(self, sources=None):
         if sources is None:
@@ -236,5 +242,4 @@ class Ebooks(object):
     def debug(self, source, *msg):
         if not self.verbose:
             return
-        # TODO: Py3k cross compatibility.
-        print(u"[{0!s} @{1}] {2}".format(datetime.now(), source, u" ".join(map(unicode, msg))))
+        print(unicode_type("[{0!s} @{1}] {2}").format(datetime.now(), source, unicode_type(" ").join(map(unicode_type, msg))))

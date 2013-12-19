@@ -2,7 +2,7 @@ from setuptools import setup
 
 kw = {
     "name": "ebooks",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "description": 'Markov Twitter bot',
     "long_description": "Python based multiple-account-using, markov-tweeting, hamburger-eating CHAMPION OF THE WORLDDDD!",
     "url": "https://github.com/plausibility/ebooks.py",

@@ -7,7 +7,7 @@ Todo
 ----
 
 + [ ] Add Py3k compatibility with Flask's `_compat.py` cheatorama.
-+ [x] Get gevent-based tweeting actually going. (we're no longer using gevent)
++ [x] ~~Get gevent-based tweeting actually going.~~ (we're no longer using gevent)
 + [x] Move configuration into some sneaky attributes on the subclass (then use `inspect.getmembers()` to find them)
 + [x] Tidy shit up.
 + [x] Add example use file.
@@ -28,7 +28,8 @@ class MyBooks(Ebooks):
                  OAUTH_SECRET,
                  CONSUMER_KEY,
                  CONSUMER_SECRET),
-        "chain_length": 2  # optional
+        "chain_length": 2,  # optional
+        "dry": False,  # optional
     }
 
     t_some_other_guy = {
